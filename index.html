@@ -1,0 +1,1020 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <link rel="stylesheet" href="css/leaflet.css">
+        <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+        <link rel="stylesheet" href="css/L.Control.Locate.min.css">
+        <link rel="stylesheet" href="css/qgis2web.css">
+        <link rel="stylesheet" href="css/fontawesome-all.min.css">
+        <link rel="stylesheet" href="css/leaflet-search.css">
+        <link rel="stylesheet" href="css/filter.css">
+<link rel="stylesheet" href="css/nouislider.min.css">
+        <link rel="stylesheet" href="css/leaflet.photon.css">
+        <link rel="stylesheet" href="css/leaflet-measure.css">
+        <style>
+        html, body, #map {
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            margin: 0;
+        }
+        </style>
+        <title></title>
+    </head>
+    <body>
+        <div id="map">
+        </div>
+        <script src="js/qgis2web_expressions.js"></script>
+        <script src="js/leaflet.js"></script>
+        <script src="js/L.Control.Layers.Tree.min.js"></script>
+        <script src="js/L.Control.Locate.min.js"></script>
+        <script src="js/leaflet.rotatedMarker.js"></script>
+        <script src="js/leaflet.pattern.js"></script>
+        <script src="js/leaflet-hash.js"></script>
+        <script src="js/Autolinker.min.js"></script>
+        <script src="js/rbush.min.js"></script>
+        <script src="js/labelgun.min.js"></script>
+        <script src="js/labels.js"></script>
+        <script src="js/leaflet.photon.js"></script>
+        <script src="js/leaflet-measure.js"></script>
+        <script src="js/leaflet-search.js"></script>
+        <script src="js/tailDT.js"></script>
+<script src="js/nouislider.min.js"></script>
+<script src="js/wNumb.js"></script>
+        <script src="data/ZONING_BOUSSE_1.js"></script>
+        <script src="data/voirie_structure_2.js"></script>
+        <script>
+        var highlightLayer;
+        function highlightFeature(e) {
+            highlightLayer = e.target;
+
+            if (e.target.feature.geometry.type === 'LineString' || e.target.feature.geometry.type === 'MultiLineString') {
+              highlightLayer.setStyle({
+                color: 'rgba(255, 255, 0, 1.00)',
+              });
+            } else {
+              highlightLayer.setStyle({
+                fillColor: 'rgba(255, 255, 0, 1.00)',
+                fillOpacity: 1
+              });
+            }
+            highlightLayer.openPopup();
+        }
+        var map = L.map('map', {
+            zoomControl:false, maxZoom:28, minZoom:1
+        }).fitBounds([[12.627703694345463,-1.972144026862686],[12.723224211491907,-1.8001111495020778]]);
+        var hash = new L.Hash(map);
+        map.attributionControl.setPrefix('<a href="https://github.com/qgis2web/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+        var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
+        // remove popup's row if "visible-with-data"
+        function removeEmptyRowsFromPopupContent(content, feature) {
+         var tempDiv = document.createElement('div');
+         tempDiv.innerHTML = content;
+         var rows = tempDiv.querySelectorAll('tr');
+         for (var i = 0; i < rows.length; i++) {
+             var td = rows[i].querySelector('td.visible-with-data');
+             var key = td ? td.id : '';
+             if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
+                 rows[i].parentNode.removeChild(rows[i]);
+             }
+         }
+         return tempDiv.innerHTML;
+        }
+        // modify popup if contains media
+        function addClassToPopupIfMedia(content, popup) {
+            var tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+            var imgTd = tempDiv.querySelector('td img');
+            if (imgTd) {
+                var src = imgTd.getAttribute('src');
+                if (/\.(jpg|jpeg|png|gif|bmp|webp|avif)$/i.test(src)) {
+                    popup._contentNode.classList.add('media');
+                    setTimeout(function() {
+                        popup.update();
+                    }, 10);
+                } else if (/\.(mp3|wav|ogg|aac)$/i.test(src)) {
+                    var audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.src = src;
+                    imgTd.parentNode.replaceChild(audio, imgTd);
+                    popup._contentNode.classList.add('media');
+                    setTimeout(function() {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else if (/\.(mp4|webm|ogg|mov)$/i.test(src)) {
+                    var video = document.createElement('video');
+                    video.controls = true;
+                    video.src = src;
+                    video.style.width = "400px";
+                    video.style.height = "300px";
+                    video.style.maxHeight = "60vh";
+                    video.style.maxWidth = "60vw";
+                    imgTd.parentNode.replaceChild(video, imgTd);
+                    popup._contentNode.classList.add('media');
+                    // Aggiorna il popup quando il video carica i metadati
+                    video.addEventListener('loadedmetadata', function() {
+                        popup.update();
+                    });
+                    setTimeout(function() {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else {
+                    popup._contentNode.classList.remove('media');
+                }
+            } else {
+                popup._contentNode.classList.remove('media');
+            }
+        }
+        var zoomControl = L.control.zoom({
+            position: 'topleft'
+        }).addTo(map);
+        L.control.locate({locateOptions: {maxZoom: 19}}).addTo(map);
+        var measureControl = new L.Control.Measure({
+            position: 'topleft',
+            primaryLengthUnit: 'meters',
+            secondaryLengthUnit: 'kilometers',
+            primaryAreaUnit: 'sqmeters',
+            secondaryAreaUnit: 'hectares'
+        });
+        measureControl.addTo(map);
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].innerHTML = '';
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].className += ' fas fa-ruler';
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {
+        }
+        map.createPane('pane_OpenTopoMap_0');
+        map.getPane('pane_OpenTopoMap_0').style.zIndex = 400;
+        var layer_OpenTopoMap_0 = L.tileLayer('https://a.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            pane: 'pane_OpenTopoMap_0',
+            opacity: 1.0,
+            attribution: '<a href="https://www.openstreetmap.org/copyright">Kartendaten: © OpenStreetMap-Mitwirkende, SRTM | Kartendarstellung: © OpenTopoMap (CC-BY-SA)</a>',
+            minZoom: 1,
+            maxZoom: 28,
+            minNativeZoom: 0,
+            maxNativeZoom: 18
+        });
+        layer_OpenTopoMap_0;
+        map.addLayer(layer_OpenTopoMap_0);
+        function pop_ZONING_BOUSSE_1(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                    if (typeof layer.closePopup == 'function') {
+                        layer.closePopup();
+                    } else {
+                        layer.eachLayer(function(feature){
+                            feature.closePopup()
+                        });
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <th scope="row">Id</th>\
+                        <td>' + (feature.properties['Id'] !== null ? autolinker.link(String(feature.properties['Id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">destinatio</th>\
+                        <td>' + (feature.properties['destinatio'] !== null ? autolinker.link(String(feature.properties['destinatio']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">superficie</th>\
+                        <td>' + (feature.properties['superficie'] !== null ? autolinker.link(String(feature.properties['superficie']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_ZONING_BOUSSE_1_0(feature) {
+            switch(String(feature.properties['destinatio'])) {
+                case 'front commercial à aménager':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(183,16,220,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'hab spontané à restructurer':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(215,40,183,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'parc urbain à créer':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(195,228,111,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'trame urbaine':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(104,224,146,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'zad':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(122,171,204,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'Zone à reboisée':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(234,190,129,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'zone administrative':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(208,79,40,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'zone administrative à densifier':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(201,58,75,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'zone agriculture urbaine':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(108,95,232,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'zone agropastorale':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(149,72,237,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'zone commerciale existante à renover':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(105,214,47,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'zone d\'urbanisation future':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(14,198,208,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'zone de formation professionel':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(238,26,125,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'zone de promotion immobilière':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(235,224,68,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'zone de reserve foncière':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(25,204,150,0.347)',
+                interactive: true,
+            }
+                    break;
+                case 'zone industrielle':
+                    return {
+                pane: 'pane_ZONING_BOUSSE_1',
+                opacity: 1,
+                color: 'rgba(35,35,35,0.347)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(119,144,220,0.347)',
+                interactive: true,
+            }
+                    break;
+            }
+        }
+        map.createPane('pane_ZONING_BOUSSE_1');
+        map.getPane('pane_ZONING_BOUSSE_1').style.zIndex = 401;
+        map.getPane('pane_ZONING_BOUSSE_1').style['mix-blend-mode'] = 'normal';
+        var layer_ZONING_BOUSSE_1 = new L.geoJson(json_ZONING_BOUSSE_1, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_ZONING_BOUSSE_1',
+            layerName: 'layer_ZONING_BOUSSE_1',
+            pane: 'pane_ZONING_BOUSSE_1',
+            onEachFeature: pop_ZONING_BOUSSE_1,
+            style: style_ZONING_BOUSSE_1_0,
+        });
+        bounds_group.addLayer(layer_ZONING_BOUSSE_1);
+        map.addLayer(layer_ZONING_BOUSSE_1);
+        function pop_voirie_structure_2(feature, layer) {
+            layer.on({
+                mouseout: function(e) {
+                    for (var i in e.target._eventParents) {
+                        if (typeof e.target._eventParents[i].resetStyle === 'function') {
+                            e.target._eventParents[i].resetStyle(e.target);
+                        }
+                    }
+                    if (typeof layer.closePopup == 'function') {
+                        layer.closePopup();
+                    } else {
+                        layer.eachLayer(function(feature){
+                            feature.closePopup()
+                        });
+                    }
+                },
+                mouseover: highlightFeature,
+            });
+            var popupContent = '<table>\
+                    <tr>\
+                        <th scope="row">Id</th>\
+                        <td>' + (feature.properties['Id'] !== null ? autolinker.link(String(feature.properties['Id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">type</th>\
+                        <td>' + (feature.properties['type'] !== null ? autolinker.link(String(feature.properties['type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <th scope="row">lineaire_r</th>\
+                        <td>' + (feature.properties['lineaire_r'] !== null ? autolinker.link(String(feature.properties['lineaire_r']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_voirie_structure_2_0(feature) {
+            switch(String(feature.properties['type'])) {
+                case 'voie primaire existante à amenager':
+                    return {
+                pane: 'pane_voirie_structure_2',
+                opacity: 1,
+                color: 'rgba(237,20,117,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+                    break;
+                case 'voie secondaire à créer':
+                    return {
+                pane: 'pane_voirie_structure_2',
+                opacity: 1,
+                color: 'rgba(91,83,231,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+                    break;
+                case 'voie secondaire existante à amenager':
+                    return {
+                pane: 'pane_voirie_structure_2',
+                opacity: 1,
+                color: 'rgba(35,166,227,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+                    break;
+                case 'voie secondaire existante à bitumer':
+                    return {
+                pane: 'pane_voirie_structure_2',
+                opacity: 1,
+                color: 'rgba(200,136,109,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+                    break;
+                case 'voirie primaire à créer':
+                    return {
+                pane: 'pane_voirie_structure_2',
+                opacity: 1,
+                color: 'rgba(76,76,76,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 8.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+                    break;
+                case 'voirie primaire bitumé (existante)':
+                    return {
+                pane: 'pane_voirie_structure_2',
+                opacity: 1,
+                color: 'rgba(213,218,115,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+                    break;
+                case 'voirie primaire existante à bitumer':
+                    return {
+                pane: 'pane_voirie_structure_2',
+                opacity: 1,
+                color: 'rgba(112,206,165,1.0)',
+                dashArray: '',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+                    break;
+            }
+        }
+        map.createPane('pane_voirie_structure_2');
+        map.getPane('pane_voirie_structure_2').style.zIndex = 402;
+        map.getPane('pane_voirie_structure_2').style['mix-blend-mode'] = 'normal';
+        var layer_voirie_structure_2 = new L.geoJson(json_voirie_structure_2, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_voirie_structure_2',
+            layerName: 'layer_voirie_structure_2',
+            pane: 'pane_voirie_structure_2',
+            onEachFeature: pop_voirie_structure_2,
+            style: style_voirie_structure_2_0,
+        });
+        bounds_group.addLayer(layer_voirie_structure_2);
+        map.addLayer(layer_voirie_structure_2);
+        const url = {"Nominatim OSM": "https://nominatim.openstreetmap.org/search?format=geojson&addressdetails=1&",
+        "France BAN": "https://api-adresse.data.gouv.fr/search/?"}
+        var photonControl = L.control.photon({
+            url: url["Nominatim OSM"],
+            feedbackLabel: '',
+            position: 'topleft',
+            includePosition: true,
+            initial: true,
+            // resultsHandler: myHandler,
+        }).addTo(map);
+        photonControl._container.childNodes[0].style.borderRadius="10px"
+        // Create a variable to store the geoJSON data
+        var x = null;
+        // Create a variable to store the marker
+        var marker = null;
+        // Add an event listener to the Photon control to create a marker from the returned geoJSON data
+        var z = null;
+        photonControl.on('selected', function(e) {
+            console.log(photonControl.search.resultsContainer);
+            if (x != null) {
+                map.removeLayer(obj3.marker);
+                map.removeLayer(x);
+            }
+            obj2.gcd = e.choice;
+            x = L.geoJSON(obj2.gcd).addTo(map);
+            var label = typeof obj2.gcd.properties.label === 'undefined' ? obj2.gcd.properties.display_name : obj2.gcd.properties.label;
+            obj3.marker = L.marker(x.getLayers()[0].getLatLng()).bindPopup(label).addTo(map);
+            map.setView(x.getLayers()[0].getLatLng(), 17);
+            z = typeof e.choice.properties.label === 'undefined'? e.choice.properties.display_name : e.choice.properties.label;
+            console.log(e);
+            e.target.input.value = z;
+        });
+        var search = document.getElementsByClassName("leaflet-photon leaflet-control")[0];
+        search.classList.add("leaflet-control-search")
+        search.style.display = "flex";
+        search.style.backgroundColor="rgba(255,255,255,0.5)" 
+
+        // Create the new button element
+        var button = document.createElement("div");
+        button.id = "gcd-button-control";
+        button.className = "gcd-gl-btn fa fa-search search-button";
+
+        // Insert the button at the beginning of the search control
+        search.insertBefore(button, search.firstChild);
+        last = search.lastChild;
+        last.style.display = "none";
+        button.addEventListener("click", function (e) {
+            if (last.style.display === "none") {
+                last.style.display = "block";
+            } else {
+                last.style.display = "none";
+            }
+        });
+        var overlaysTree = [
+            {label: 'voirie_structure<br /><table><tr><td style="text-align: center;"><img src="legend/voirie_structure_2_voieprimaireexistanteàamenager0.png" /></td><td>voie primaire existante à amenager</td></tr><tr><td style="text-align: center;"><img src="legend/voirie_structure_2_voiesecondaireàcréer1.png" /></td><td>voie secondaire à créer</td></tr><tr><td style="text-align: center;"><img src="legend/voirie_structure_2_voiesecondaireexistanteàamenager2.png" /></td><td>voie secondaire existante à amenager</td></tr><tr><td style="text-align: center;"><img src="legend/voirie_structure_2_voiesecondaireexistanteàbitumer3.png" /></td><td>voie secondaire existante à bitumer</td></tr><tr><td style="text-align: center;"><img src="legend/voirie_structure_2_voirieprimaireàcréer4.png" /></td><td>voirie primaire à créer</td></tr><tr><td style="text-align: center;"><img src="legend/voirie_structure_2_voirieprimairebituméexistante5.png" /></td><td>voirie primaire bitumé (existante)</td></tr><tr><td style="text-align: center;"><img src="legend/voirie_structure_2_voirieprimaireexistanteàbitumer6.png" /></td><td>voirie primaire existante à bitumer</td></tr></table>', layer: layer_voirie_structure_2},
+            {label: 'ZONING_BOUSSE<br /><table><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_frontcommercialàaménager0.png" /></td><td>front commercial à aménager</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_habspontanéàrestructurer1.png" /></td><td>hab spontané à restructurer</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_parcurbainàcréer2.png" /></td><td>parc urbain à créer</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_trameurbaine3.png" /></td><td>trame urbaine</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_zad4.png" /></td><td>zad</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_Zoneàreboisée5.png" /></td><td>Zone à reboisée</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_zoneadministrative6.png" /></td><td>zone administrative</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_zoneadministrativeàdensifier7.png" /></td><td>zone administrative à densifier</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_zoneagricultureurbaine8.png" /></td><td>zone agriculture urbaine</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_zoneagropastorale9.png" /></td><td>zone agropastorale</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_zonecommercialeexistanteàrenover10.png" /></td><td>zone commerciale existante à renover</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_zonedurbanisationfuture11.png" /></td><td>zone d\'urbanisation future</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_zonedeformationprofessionel12.png" /></td><td>zone de formation professionel</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_zonedepromotionimmobilière13.png" /></td><td>zone de promotion immobilière</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_zonedereservefoncière14.png" /></td><td>zone de reserve foncière</td></tr><tr><td style="text-align: center;"><img src="legend/ZONING_BOUSSE_1_zoneindustrielle15.png" /></td><td>zone industrielle</td></tr></table>', layer: layer_ZONING_BOUSSE_1},
+            {label: "OpenTopoMap", layer: layer_OpenTopoMap_0},]
+        var lay = L.control.layers.tree(null, overlaysTree,{
+            //namedToggle: true,
+            //selectorBack: false,
+            //closedSymbol: '&#8862; &#x1f5c0;',
+            //openedSymbol: '&#8863; &#x1f5c1;',
+            //collapseAll: 'Collapse all',
+            //expandAll: 'Expand all',
+            collapsed: true,
+        });
+        lay.addTo(map);
+        setBounds();
+        var i = 0;
+        layer_ZONING_BOUSSE_1.eachLayer(function(layer) {
+            var context = {
+                feature: layer.feature,
+                variables: {}
+            };
+            layer.bindTooltip((layer.feature.properties['destinatio'] !== null?String('<div style="color: #323232; font-size: 10pt; font-family: \'Open Sans\', sans-serif;">' + layer.feature.properties['destinatio']) + '</div>':''), {permanent: true, offset: [-0, -16], className: 'css_ZONING_BOUSSE_1'});
+            labels.push(layer);
+            totalMarkers += 1;
+              layer.added = true;
+              addLabel(layer, i);
+              i++;
+        });
+        map.addControl(new L.Control.Search({
+            layer: layer_ZONING_BOUSSE_1,
+            initial: false,
+            hideMarkerOnCollapse: true,
+            propertyName: 'destinatio'}));
+        if (typeof url === 'undefined') {
+            document.getElementsByClassName('search-button')[0].className += ' fa fa-binoculars';
+        } else {
+            document.getElementsByClassName('search-button')[1].className += ' fa fa-binoculars';
+        }
+        var mapDiv = document.getElementById('map');
+        var row = document.createElement('div');
+        row.className="row";
+        row.id="all";
+        row.style.height = "100%";
+        var col1 = document.createElement('div');
+        col1.className="col9";
+        col1.id = "mapWindow";
+        col1.style.height = "99%";
+        col1.style.width = "80%";
+        col1.style.display = "inline-block";
+        var col2 = document.createElement('div');
+        col2.className="col3";
+        col2.id = "menu";
+        col2.style.display = "inline-block";
+        mapDiv.parentNode.insertBefore(row, mapDiv);
+        document.getElementById("all").appendChild(col1);
+        document.getElementById("all").appendChild(col2);
+        col1.appendChild(mapDiv)
+        var Filters = {"Id": "int","lineaire_r": "real","superficie": "real","type": "str","destinatio": "str"};
+        function filterFunc() {
+          map.eachLayer(function(lyr){
+          if ("options" in lyr && "dataVar" in lyr["options"]){
+            features = this[lyr["options"]["dataVar"]].features.slice(0);
+            try{
+              for (key in Filters){
+                keyS = key.replace(/[^a-zA-Z0-9_]/g, "")
+                if (Filters[key] == "str" || Filters[key] == "bool"){
+                  var selection = [];
+                  var options = document.getElementById("sel_" + keyS).options
+                  for (var i=0; i < options.length; i++) {
+                    if (options[i].selected) selection.push(options[i].value);
+                  }
+                    try{
+                      if (key in features[0].properties){
+                        for (i = features.length - 1;
+                          i >= 0; --i){
+                          if (selection.indexOf(
+                          features[i].properties[key])<0
+                          && selection.length>0) {
+                          features.splice(i,1);
+                          }
+                        }
+                      }
+                    } catch(err){
+                  }
+                }
+                if (Filters[key] == "int"){
+                  sliderVals =  document.getElementById(
+                    "div_" + keyS).noUiSlider.get();
+                  try{
+                    if (key in features[0].properties){
+                    for (i = features.length - 1; i >= 0; --i){
+                      if (parseInt(features[i].properties[key])
+                          < sliderVals[0]
+                          || parseInt(features[i].properties[key])
+                          > sliderVals[1]){
+                            features.splice(i,1);
+                          }
+                        }
+                      }
+                    } catch(err){
+                    }
+                  }
+                if (Filters[key] == "real"){
+                  sliderVals =  document.getElementById(
+                    "div_" + keyS).noUiSlider.get();
+                  try{
+                    if (key in features[0].properties){
+                    for (i = features.length - 1; i >= 0; --i){
+                      if (features[i].properties[key]
+                          < sliderVals[0]
+                          || features[i].properties[key]
+                          > sliderVals[1]){
+                            features.splice(i,1);
+                          }
+                        }
+                      }
+                    } catch(err){
+                    }
+                  }
+                if (Filters[key] == "date"
+                  || Filters[key] == "datetime"
+                  || Filters[key] == "time"){
+                  try{
+                    if (key in features[0].properties){
+                      HTMLkey = key.replace(/[&\/\\#,+()$~%.'":*?<>{} ]/g, '');
+                      startdate = document.getElementById("dat_" +
+                        HTMLkey + "_date1").value.replace(" ", "T");
+                      enddate = document.getElementById("dat_" +
+                        HTMLkey + "_date2").value.replace(" ", "T");
+                      for (i = features.length - 1; i >= 0; --i){
+                        if (features[i].properties[key] < startdate
+                          || features[i].properties[key] > enddate){
+                          features.splice(i,1);
+                        }
+                      }
+                    }
+                  } catch(err){
+                  }
+                }
+              }
+            } catch(err){
+            }
+          this[lyr["options"]["layerName"]].clearLayers();
+          this[lyr["options"]["layerName"]].addData(features);
+        var i = 0;
+        layer_ZONING_BOUSSE_1.eachLayer(function(layer) {
+            var context = {
+                feature: layer.feature,
+                variables: {}
+            };
+            layer.bindTooltip((layer.feature.properties['destinatio'] !== null?String('<div style="color: #323232; font-size: 10pt; font-family: \'Open Sans\', sans-serif;">' + layer.feature.properties['destinatio']) + '</div>':''), {permanent: true, offset: [-0, -16], className: 'css_ZONING_BOUSSE_1'});
+            labels.push(layer);
+            totalMarkers += 1;
+              layer.added = true;
+              addLabel(layer, i);
+              i++;
+        });
+          }
+          })
+        }
+            document.getElementById("menu").appendChild(
+                document.createElement("div"));
+            var div_Id = document.createElement("div");
+            div_Id.id = "div_Id";
+            div_Id.className = "slider";
+            document.getElementById("menu").appendChild(div_Id);
+            var lab_Id = document.createElement('div');
+            lab_Id.innerHTML  = 'Id: <span id="val_Id"></span>';
+            lab_Id.className = 'filterlabel';
+            document.getElementById("menu").appendChild(lab_Id);
+            var reset_Id = document.createElement('div');
+            reset_Id.innerHTML = 'clear filter';
+            reset_Id.className = 'filterlabel';
+            lab_Id.className = 'filterlabel';
+            reset_Id.onclick = function() {
+                sel_Id.noUiSlider.reset();
+            };
+            document.getElementById("menu").appendChild(reset_Id);
+            var sel_Id = document.getElementById('div_Id');
+            noUiSlider.create(sel_Id, {
+                connect: true,
+                start: [0, 29],
+                step: 1,
+                format: wNumb({
+                    decimals: 0,
+                    }),
+                range: {
+                min: 0,
+                max: 29
+                }
+            });
+            sel_Id.noUiSlider.on('update', function (values) {
+            filterVals =[];
+            for (value in values){
+            filterVals.push(parseInt(value))
+            }
+            val_Id = document.getElementById('val_Id');
+            val_Id.innerHTML = values.join(' - ');
+                filterFunc()
+            });
+            document.getElementById("menu").appendChild(
+                document.createElement("div"));
+            var div_lineaire_r = document.createElement("div");
+            div_lineaire_r.id = "div_lineaire_r";
+            div_lineaire_r.className = "slider";
+            document.getElementById("menu").appendChild(div_lineaire_r);
+            var lab_lineaire_r = document.createElement('div');
+            lab_lineaire_r.innerHTML  = 'lineaire_r: <span id="val_lineaire_r"></span>';
+            lab_lineaire_r.className = 'filterlabel';
+            document.getElementById("menu").appendChild(lab_lineaire_r);
+            var reset_lineaire_r = document.createElement('div');
+            reset_lineaire_r.innerHTML = 'clear filter';
+            reset_lineaire_r.className = 'filterlabel';
+            lab_lineaire_r.className = 'filterlabel';
+            reset_lineaire_r.onclick = function() {
+                sel_lineaire_r.noUiSlider.reset();
+            };
+            document.getElementById("menu").appendChild(reset_lineaire_r);
+            var sel_lineaire_r = document.getElementById('div_lineaire_r');
+            noUiSlider.create(sel_lineaire_r, {
+                connect: true,
+                start: [0.424353316068, 9.61847874856],
+                range: {
+                min: 0.424353316068,
+                max: 9.61847874856
+                }
+            });
+            sel_lineaire_r.noUiSlider.on('update', function (values) {
+            val_lineaire_r = document.getElementById('val_lineaire_r');
+            val_lineaire_r.innerHTML = values.join(' - ');
+                filterFunc()
+            });
+            document.getElementById("menu").appendChild(
+                document.createElement("div"));
+            var div_superficie = document.createElement("div");
+            div_superficie.id = "div_superficie";
+            div_superficie.className = "slider";
+            document.getElementById("menu").appendChild(div_superficie);
+            var lab_superficie = document.createElement('div');
+            lab_superficie.innerHTML  = 'superficie: <span id="val_superficie"></span>';
+            lab_superficie.className = 'filterlabel';
+            document.getElementById("menu").appendChild(lab_superficie);
+            var reset_superficie = document.createElement('div');
+            reset_superficie.innerHTML = 'clear filter';
+            reset_superficie.className = 'filterlabel';
+            lab_superficie.className = 'filterlabel';
+            reset_superficie.onclick = function() {
+                sel_superficie.noUiSlider.reset();
+            };
+            document.getElementById("menu").appendChild(reset_superficie);
+            var sel_superficie = document.getElementById('div_superficie');
+            noUiSlider.create(sel_superficie, {
+                connect: true,
+                start: [6.88292346763, 1065.04831526],
+                range: {
+                min: 6.88292346763,
+                max: 1065.04831526
+                }
+            });
+            sel_superficie.noUiSlider.on('update', function (values) {
+            val_superficie = document.getElementById('val_superficie');
+            val_superficie.innerHTML = values.join(' - ');
+                filterFunc()
+            });
+            document.getElementById("menu").appendChild(
+                document.createElement("div"));
+            var div_type = document.createElement('div');
+            div_type.id = "div_type";
+            div_type.className= "filterselect";
+            document.getElementById("menu").appendChild(div_type);
+            sel_type = document.createElement('select');
+            sel_type.multiple = true;
+            sel_type.size = 7;
+            sel_type.id = "sel_type";
+            var type_options_str = "<option value='' unselected></option>";
+            sel_type.onchange = function(){filterFunc()};
+            type_options_str  += '<option value="voie primaire existante à amenager">voie primaire existante à amenager</option>';
+            type_options_str  += '<option value="voie secondaire existante à amenager">voie secondaire existante à amenager</option>';
+            type_options_str  += '<option value="voie secondaire existante à bitumer">voie secondaire existante à bitumer</option>';
+            type_options_str  += '<option value="voie secondaire à créer">voie secondaire à créer</option>';
+            type_options_str  += '<option value="voirie primaire bitumé (existante)">voirie primaire bitumé (existante)</option>';
+            type_options_str  += '<option value="voirie primaire existante à bitumer">voirie primaire existante à bitumer</option>';
+            type_options_str  += '<option value="voirie primaire à créer">voirie primaire à créer</option>';
+            sel_type.innerHTML = type_options_str;
+            div_type.appendChild(sel_type);
+            var lab_type = document.createElement('div');
+            lab_type.innerHTML = 'type';
+            lab_type.className = 'filterlabel';
+            div_type.appendChild(lab_type);
+            var reset_type = document.createElement('div');
+            reset_type.innerHTML = 'clear filter';
+            reset_type.className = 'filterlabel';
+            reset_type.onclick = function() {
+                var options = document.getElementById("sel_type").options;
+                for (var i=0; i < options.length; i++) {
+                    options[i].selected = false;
+                }
+                filterFunc();
+            };
+            div_type.appendChild(reset_type);
+            document.getElementById("menu").appendChild(
+                document.createElement("div"));
+            var div_destinatio = document.createElement('div');
+            div_destinatio.id = "div_destinatio";
+            div_destinatio.className= "filterselect";
+            document.getElementById("menu").appendChild(div_destinatio);
+            sel_destinatio = document.createElement('select');
+            sel_destinatio.multiple = true;
+            sel_destinatio.size = 10;
+            sel_destinatio.id = "sel_destinatio";
+            var destinatio_options_str = "<option value='' unselected></option>";
+            sel_destinatio.onchange = function(){filterFunc()};
+            destinatio_options_str  += '<option value="Zone à reboisée">Zone à reboisée</option>';
+            destinatio_options_str  += '<option value="front commercial à aménager">front commercial à aménager</option>';
+            destinatio_options_str  += '<option value="hab spontané à restructurer">hab spontané à restructurer</option>';
+            destinatio_options_str  += '<option value="parc urbain à créer">parc urbain à créer</option>';
+            destinatio_options_str  += '<option value="trame urbaine">trame urbaine</option>';
+            destinatio_options_str  += '<option value="zad">zad</option>';
+            destinatio_options_str  += '<option value="zone administrative">zone administrative</option>';
+            destinatio_options_str  += '<option value="zone administrative à densifier">zone administrative à densifier</option>';
+            destinatio_options_str  += '<option value="zone agriculture urbaine">zone agriculture urbaine</option>';
+            destinatio_options_str  += '<option value="zone agropastorale">zone agropastorale</option>';
+            destinatio_options_str  += '<option value="zone commerciale existante à renover">zone commerciale existante à renover</option>';
+            destinatio_options_str  += '<option value="zone d&apos;urbanisation future">zone d&apos;urbanisation future</option>';
+            destinatio_options_str  += '<option value="zone de formation professionel">zone de formation professionel</option>';
+            destinatio_options_str  += '<option value="zone de promotion immobilière">zone de promotion immobilière</option>';
+            destinatio_options_str  += '<option value="zone de reserve foncière">zone de reserve foncière</option>';
+            destinatio_options_str  += '<option value="zone industrielle">zone industrielle</option>';
+            sel_destinatio.innerHTML = destinatio_options_str;
+            div_destinatio.appendChild(sel_destinatio);
+            var lab_destinatio = document.createElement('div');
+            lab_destinatio.innerHTML = 'destinatio';
+            lab_destinatio.className = 'filterlabel';
+            div_destinatio.appendChild(lab_destinatio);
+            var reset_destinatio = document.createElement('div');
+            reset_destinatio.innerHTML = 'clear filter';
+            reset_destinatio.className = 'filterlabel';
+            reset_destinatio.onclick = function() {
+                var options = document.getElementById("sel_destinatio").options;
+                for (var i=0; i < options.length; i++) {
+                    options[i].selected = false;
+                }
+                filterFunc();
+            };
+            div_destinatio.appendChild(reset_destinatio);
+        resetLabels([layer_ZONING_BOUSSE_1]);
+        map.on("zoomend", function(){
+            resetLabels([layer_ZONING_BOUSSE_1]);
+        });
+        map.on("layeradd", function(){
+            resetLabels([layer_ZONING_BOUSSE_1]);
+        });
+        map.on("layerremove", function(){
+            resetLabels([layer_ZONING_BOUSSE_1]);
+        });
+        </script>        
+    </body>
+</html>
